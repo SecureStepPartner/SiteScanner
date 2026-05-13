@@ -4,6 +4,7 @@ from fastapi import FastAPI
 
 from app import __version__
 from app.config import settings
+from app.models import HealthResponse
 from app.routes import scans as scans_routes
 
 app = FastAPI(
@@ -16,16 +17,17 @@ app = FastAPI(
     version=__version__,
     openapi_url="/openapi.json",
     docs_url="/docs",
+    servers=[{"url": settings.public_base_url}] if settings.public_base_url else None,
 )
 
 
 app.include_router(scans_routes.router)
 
 
-@app.get("/health", tags=["meta"], operation_id="get_health")
-async def health() -> dict[str, str]:
+@app.get("/health", tags=["meta"], operation_id="get_health", response_model=HealthResponse)
+async def health() -> HealthResponse:
     """Liveness check used by deployment tooling."""
-    return {"status": "ok"}
+    return HealthResponse()
 
 
 def _diag() -> dict[str, object]:

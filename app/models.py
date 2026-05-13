@@ -88,6 +88,12 @@ class ScanSummary(BaseModel):
     info: int = 0
 
 
+class HealthResponse(BaseModel):
+    """Simple health payload used by ChatGPT and deployment tooling."""
+
+    status: str = Field(default="ok", examples=["ok"])
+
+
 class ScanResult(BaseModel):
     """Full result payload returned once a scan is in a terminal state."""
 

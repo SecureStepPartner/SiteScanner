@@ -44,6 +44,10 @@ class Settings(BaseSettings):
     host: str = Field(default="0.0.0.0")
     port: int = Field(default=8000)
     log_level: str = Field(default="info")
+    public_base_url: str = Field(
+        default="",
+        description="Public HTTPS base URL used in the OpenAPI servers list.",
+    )
 
 
 settings = Settings()
