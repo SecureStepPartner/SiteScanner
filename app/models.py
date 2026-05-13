@@ -100,4 +100,5 @@ class ScanResult(BaseModel):
     summary: ScanSummary = Field(default_factory=ScanSummary)
     findings: list[Finding] = Field(default_factory=list)
     error: str | None = None
+    dashboard_url: str | None = None
     schema_version: str = Field(default="1.0")

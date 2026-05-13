@@ -37,6 +37,8 @@ def _diag() -> dict[str, object]:
         "scan_timeout_seconds": settings.scan_timeout_seconds,
         "max_concurrent_scans": settings.max_concurrent_scans,
         "pdcp_dashboard_enabled": bool(settings.pdcp_api_key),
+        "pdcp_team_configured": bool(settings.pdcp_team_id),
+        "pdcp_cloud_upload_enabled": settings.pdcp_enable_cloud_upload,
     }
 
 

@@ -80,6 +80,7 @@ async def run_scan(ctx: dict, job_id: str) -> None:
         summary=summary,
         findings=findings,
         error=error,
+        dashboard_url=outcome.dashboard_url,
     )
 
     await set_result(redis, job_id, status=status, result=result, error=error)

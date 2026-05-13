@@ -7,7 +7,10 @@ link-local, loopback, and cloud-metadata addresses, plus public-suffix parsing.
 
 import re
 
-_DOMAIN_RE = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)+$")
+_DOMAIN_RE = re.compile(
+    r"^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?"
+    r"(\.[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?)+$"
+)
 
 
 class DomainValidationError(ValueError):

@@ -24,12 +24,16 @@ class Settings(BaseSettings):
     # ProjectDiscovery Cloud API key. If set, the scanner adds the `-dashboard`
     # flag and Nuclei uploads results to cloud.projectdiscovery.io.
     pdcp_api_key: str = Field(default="")
+    pdcp_team_id: str = Field(default="")
+    pdcp_enable_cloud_upload: bool = Field(default=True)
+    pdcp_disable_cloud_upload_warnings: bool = Field(default=True)
 
     # Redis (queue + job state).
     redis_url: str = Field(default="redis://localhost:6379/0")
 
     # Email delivery.
-    email_provider: str = Field(default="stub")
+    email_provider: str = Field(default="resend")
+    resend_api_key: str = Field(default="")
     email_from: str = Field(default="reports@securestep.example")
 
     # Scan controls.

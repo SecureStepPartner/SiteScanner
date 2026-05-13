@@ -53,6 +53,15 @@ The first run of `nuclei` downloads its template library (~5,000+ files) into
 `~/.config/nuclei` and `~/.cache/nuclei`. This happens automatically; expect a
 30–60 second one-time delay before the first scan starts producing output.
 
+If you want scans to appear in ProjectDiscovery Cloud, set `PDCP_API_KEY` in
+`.env` and leave `ENABLE_CLOUD_UPLOAD=true`. The worker also captures the scan
+dashboard URL from Nuclei output and includes it in the stored result and email
+report when ProjectDiscovery returns one.
+
+Email delivery uses Resend by default. Set `RESEND_API_KEY`, keep
+`EMAIL_PROVIDER=resend`, and use a verified `EMAIL_FROM` address from your
+Resend domain.
+
 For other platforms, see the project page:
 <https://github.com/projectdiscovery/nuclei>.
 
