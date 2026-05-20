@@ -3,7 +3,7 @@ from __future__ import annotations
 import sys
 import types
 
-#test cases added
+
 def _install_arq_stub() -> None:
     arq_module = types.ModuleType("arq")
 
