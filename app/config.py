@@ -17,8 +17,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Backend authentication.
-    # Phase 1 does not enforce this header; Phase 2 wires it into the auth dependency.
+    # Reserved for future authentication hardening.
     sitescanner_api_key: str = Field(default="")
 
     # ProjectDiscovery Cloud API key. If set, the scanner adds the `-dashboard`
@@ -36,9 +35,9 @@ class Settings(BaseSettings):
     resend_api_key: str = Field(default="")
     email_from: str = Field(default="reports@securestep.example")
 
-    # Scan controls.
-    scan_timeout_seconds: int = Field(default=900)
-    max_concurrent_scans: int = Field(default=3)
+    # Scan controls. 15 mins timeout
+    scan_timeout_seconds: int = Field(default=900, ge=1, le=900)
+    max_concurrent_scans: int = Field(default=3, ge=1)
 
     # Server.
     host: str = Field(default="0.0.0.0")

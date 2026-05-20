@@ -1,8 +1,7 @@
 """Email report delivery.
 
-Phase 1 ships a stub provider that writes the email to a file under
-`/tmp/sitescanner/emails/`. The interface is small so a real provider
-(SES, Postmark, SendGrid, SMTP) can be swapped in without touching callers.
+The service supports Resend for production delivery and a stub provider that
+writes the email to a file under `/tmp/sitescanner/emails/` for local use.
 """
 
 from __future__ import annotations

@@ -89,6 +89,29 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 arq app.worker.WorkerSettings
 ```
 
+## Testing
+
+Run the test suite from the repository root:
+
+```bash
+pytest
+```
+
+For more detail, use verbose output:
+
+```bash
+pytest -v -ra
+```
+
+Run linting as part of local verification:
+
+```bash
+ruff check .
+```
+
+The GitHub Actions workflow in `.github/workflows/tests.yml` runs both `ruff check .`
+and `pytest` on push and pull request events.
+
 Health check:
 
 ```bash
@@ -98,10 +121,15 @@ curl http://localhost:8000/health
 OpenAPI schema (consumed by the ChatGPT App Builder Action) is published at
 `http://localhost:8000/openapi.json` and interactive docs at `/docs`.
 
-## Phase 1 status
+## MVP Status
 
-The foundation is in place. Endpoints, scanner integration, worker, parser, and
-email delivery are added incrementally on top.
+The backend is wired end-to-end:
+
+- finalized API endpoints for creating, polling, and listing scans
+- enforced 15-minute scan timeout
+- OpenAPI schema for ChatGPT Actions
+- email report delivery through Resend, with a stub fallback for local use
+- workflow testing via GitHub Actions
 
 ## Repository layout
 
@@ -115,8 +143,8 @@ app/
   worker.py      arq worker entrypoint
   scanner.py     Nuclei subprocess execution and timeout
   parser.py      Nuclei JSONL → structured findings
-  email.py       Report delivery (stub by default)
-  auth.py        API-key dependency (stub in Phase 1)
-  validators.py  Domain validation (permissive in Phase 1)
+  email.py       Report delivery (Resend + stub fallback)
+  auth.py        No-op auth dependency placeholder
+  validators.py  Domain validation
 client_scan.sh   Reference operator script (not used by the service)
 ```

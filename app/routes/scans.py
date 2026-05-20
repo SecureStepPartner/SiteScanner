@@ -7,9 +7,8 @@ from datetime import datetime
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
-from app.auth import require_api_key
 from app.config import settings
 from app.models import (
     ScanCreated,
@@ -62,7 +61,6 @@ def _result_from_record(record: dict[str, str]) -> ScanResult:
     status_code=status.HTTP_202_ACCEPTED,
     operation_id="create_scan_scan_post",
     summary="Initiate a vulnerability scan",
-    dependencies=[Depends(require_api_key)],
 )
 async def create_scan(payload: ScanRequest) -> ScanCreated:
     """Enqueue a scan and return a job_id for polling."""
@@ -89,7 +87,6 @@ async def create_scan(payload: ScanRequest) -> ScanCreated:
 @router.post(
     "/scans",
     include_in_schema=False,
-    dependencies=[Depends(require_api_key)],
 )
 async def create_scan_alias(payload: ScanRequest) -> ScanCreated:
     return await create_scan(payload)
@@ -100,7 +97,6 @@ async def create_scan_alias(payload: ScanRequest) -> ScanCreated:
     response_model=ScanResult,
     operation_id="read_scan_scan__scan_id__get",
     summary="Get scan status and results",
-    dependencies=[Depends(require_api_key)],
 )
 async def get_scan(scan_id: str) -> ScanResult:
     """Return the current state of a scan, including findings when terminal."""
@@ -115,7 +111,6 @@ async def get_scan(scan_id: str) -> ScanResult:
 @router.get(
     "/scans/{scan_id}",
     include_in_schema=False,
-    dependencies=[Depends(require_api_key)],
 )
 async def get_scan_alias(scan_id: str) -> ScanResult:
     return await get_scan(scan_id)
@@ -126,7 +121,6 @@ async def get_scan_alias(scan_id: str) -> ScanResult:
     response_model=list[ScanResult],
     operation_id="read_scans_scans_get",
     summary="List recent scans",
-    dependencies=[Depends(require_api_key)],
 )
 async def list_scans() -> list[ScanResult]:
     """Return all stored scan records from Redis."""
