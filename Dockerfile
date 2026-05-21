@@ -11,8 +11,13 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 RUN set -eux; \
+    case "${TARGETARCH:-amd64}" in \
+      amd64) nuclei_arch="linux_amd64" ;; \
+      arm64) nuclei_arch="linux_arm64" ;; \
+      *) echo "Unsupported architecture: ${TARGETARCH:-unknown}" >&2; exit 1 ;; \
+    esac; \
     dl_url="$(curl -s https://api.github.com/repos/projectdiscovery/nuclei/releases/latest \
-      | grep '"browser_download_url".*linux_amd64\.zip"' \
+      | grep "\"browser_download_url\".*${nuclei_arch}\\.zip\"" \
       | head -1 \
       | cut -d '"' -f 4)"; \
     test -n "$dl_url"; \
