@@ -59,3 +59,8 @@ def test_stub_email_provider_writes_report(tmp_path) -> None:
     assert "SecureStep scan report" in body
     assert "user@example.com" in body
     assert "example.com" in body
+    assert "Narrative Assessment" in body
+    assert "Overall Risk Posture" in body
+    assert "Priority Actions" in body
+    assert "Findings Summary Table" in body
+    assert "security headers" in body.lower()

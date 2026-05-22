@@ -56,7 +56,134 @@ class ResendEmailProvider:
         await _post_resend_email(self.api_key, payload)
 
 
+def _overall_risk_posture(result: ScanResult) -> str:
+    if result.summary.critical or result.summary.high:
+        return "High"
+    if result.summary.medium:
+        return "Moderate"
+    return "Low"
+
+
+def _narrative_assessment(result: ScanResult) -> str:
+    total = result.summary.total
+    if total == 0:
+        return (
+            "The automated scan completed without identifying any findings in the "
+            "selected template set. In plain terms, no obvious externally visible "
+            "issues were detected during this pass. That is a positive result, but "
+            "it only covers what an automated external review can observe."
+        )
+
+    high_risk = result.summary.critical + result.summary.high
+    if high_risk:
+        return (
+            f"The scan identified {high_risk} high-risk finding"
+            f"{'s' if high_risk != 1 else ''}, which deserves prompt attention. "
+            "Issues in this category can be directly exploitable or can materially "
+            "increase the chance of compromise, disruption, or data exposure."
+        )
+
+    if result.summary.medium:
+        return (
+            "The scan did not identify critical or high-risk findings, but it did "
+            "surface medium-severity items. These are usually not immediate break-in "
+            "paths on their own, but they can weaken defenses and should be reviewed "
+            "before attackers can combine them with other weaknesses."
+        )
+
+    return (
+        "The scan mainly surfaced informational or low-severity items. In plain "
+        "terms, this points more toward hardening opportunities than immediate "
+        "compromise paths, but addressing them still reduces the attack surface "
+        "and makes future exploitation more difficult."
+    )
+
+
+def _priority_actions(result: ScanResult) -> list[str]:
+    actions: list[str] = []
+    findings_text = " ".join(
+        filter(
+            None,
+            [
+                " ".join(
+                    filter(
+                        None,
+                        [f.name, f.description or "", " ".join(f.reference or [])],
+                    )
+                ).lower()
+                for f in result.findings[:10]
+            ],
+        )
+    )
+
+    if result.summary.critical or result.summary.high:
+        actions.append(
+            "Review and remediate the critical and high-severity findings first, "
+            "because they are the most likely to have immediate business impact."
+        )
+
+    if "header" in findings_text or "csp" in findings_text or "clickjacking" in findings_text:
+        actions.append(
+            "Implement a baseline set of HTTP security headers, including a "
+            "Content Security Policy, clickjacking protection, HSTS where "
+            "appropriate, X-Content-Type-Options, and Referrer-Policy."
+        )
+
+    if "cookie" in findings_text or "samesite" in findings_text:
+        actions.append(
+            "Update cookies to use the safest compatible SameSite setting, and "
+            "confirm Secure and HttpOnly are enabled for session-related cookies."
+        )
+
+    if "tls" in findings_text or "certificate" in findings_text:
+        actions.append(
+            "Validate TLS settings and certificate coverage, including modern "
+            "protocol support, certificate scope, and renewal monitoring."
+        )
+
+    if "dns" in findings_text or "caa" in findings_text:
+        actions.append(
+            "Review DNS and certificate governance records so approved domains and "
+            "issuers stay aligned with operational requirements."
+        )
+
+    if "waf" in findings_text:
+        actions.append(
+            "Confirm perimeter protections such as a WAF are actively enforced and "
+            "tuned for the most important application routes."
+        )
+
+    if not actions:
+        if result.summary.total == 0:
+            actions.extend(
+                [
+                    "Continue routine patching and monitoring so the site stays current.",
+                    "Repeat the assessment periodically, ideally with a broader scan "
+                    "profile or authenticated testing where appropriate.",
+                    "Review browser-facing protections such as security headers and "
+                    "cookie settings as part of ongoing hardening.",
+                ]
+            )
+        else:
+            actions.extend(
+                [
+                    "Review the findings table and validate which items are real "
+                    "issues versus informational observations.",
+                    "Tackle configuration hardening items that reduce exposure even "
+                    "when there is no direct exploit path.",
+                    "Repeat the scan after remediation to confirm the risk has been "
+                    "reduced.",
+                ]
+            )
+
+    return actions[:5]
+
+
 def _render_text(result: ScanResult, to_address: str) -> str:
+    narrative = _narrative_assessment(result)
+    risk_posture = _overall_risk_posture(result)
+    actions = _priority_actions(result)
+
     lines = [
         f"To: {to_address}",
         f"From: {settings.email_from}",
@@ -78,7 +205,19 @@ def _render_text(result: ScanResult, to_address: str) -> str:
         f"  low:      {result.summary.low}",
         f"  info:     {result.summary.info}",
         "",
-        "Findings (top 50):",
+        "Narrative Assessment:",
+        f"  {narrative}",
+        "",
+        "Overall Risk Posture:",
+        f"  {risk_posture}",
+        "",
+        "Priority Actions:",
+    ]
+    for index, action in enumerate(actions, start=1):
+        lines.append(f"  {index}. {action}")
+    lines += [
+        "",
+        "Findings Summary Table (top 50):",
     ]
     for f in result.findings[:50]:
         lines.append(f"  [{f.severity.value:>8}] {f.name} — {f.matched_at}")
@@ -121,6 +260,9 @@ def _render_resend_payload(
 
 
 def _render_html(result: ScanResult, to_address: str) -> str:
+    narrative = _escape(_narrative_assessment(result))
+    risk_posture = _escape(_overall_risk_posture(result))
+    actions = _priority_actions(result)
     findings_rows = []
     for f in result.findings[:50]:
         findings_rows.append(
@@ -155,7 +297,15 @@ def _render_html(result: ScanResult, to_address: str) -> str:
       <li>Low: {result.summary.low}</li>
       <li>Info: {result.summary.info}</li>
     </ul>
-    <h3>Findings</h3>
+    <h3>Narrative Assessment</h3>
+    <p>{narrative}</p>
+    <h3>Overall Risk Posture</h3>
+    <p>{risk_posture}</p>
+    <h3>Priority Actions</h3>
+    <ol>
+      {"".join(f"<li>{_escape(action)}</li>" for action in actions)}
+    </ol>
+    <h3>Findings Summary Table</h3>
     <table cellpadding="6" cellspacing="0" border="1">
       <thead>
         <tr><th>Severity</th><th>Name</th><th>Matched</th><th>Template</th></tr>
