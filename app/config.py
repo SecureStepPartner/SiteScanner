@@ -35,6 +35,11 @@ class Settings(BaseSettings):
     resend_api_key: str = Field(default="")
     email_from: str = Field(default="reports@securestep.example")
 
+    # AI report generation.
+    openai_api_key: str = Field(default="")
+    openai_model: str = Field(default="gpt-5.5")
+    schedule_meeting_url: str = Field(default="")
+
     # Scan controls. 15 mins timeout
     scan_timeout_seconds: int = Field(default=900, ge=1, le=900)
     max_concurrent_scans: int = Field(default=3, ge=1)

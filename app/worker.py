@@ -16,6 +16,7 @@ from app.config import settings
 from app.email import get_provider
 from app.models import ScanResult, ScanStatus, ScanType
 from app.parser import parse_jsonl
+from app.reporting import generate_ai_report
 from app.scanner import run_nuclei
 from app.store import get_job, set_result, set_status
 from app.validators import to_target_url
@@ -85,8 +86,10 @@ async def run_scan(ctx: dict, job_id: str) -> None:
 
     await set_result(redis, job_id, status=status, result=result, error=error)
 
+    report = await generate_ai_report(result)
+
     try:
-        await get_provider().send_report(email, result)
+        await get_provider().send_report(email, result, report)
     except Exception:
         log.exception("Failed to send report email for job %s", job_id)
 

@@ -17,12 +17,18 @@ from typing import Protocol
 
 from app.config import settings
 from app.models import ScanResult
+from app.reporting import AiReport, FindingSummary
 
 log = logging.getLogger(__name__)
 
 
 class EmailProvider(Protocol):
-    async def send_report(self, to_address: str, result: ScanResult) -> None: ...
+    async def send_report(
+        self,
+        to_address: str,
+        result: ScanResult,
+        report: AiReport | None = None,
+    ) -> None: ...
 
 
 class StubEmailProvider:
@@ -32,11 +38,16 @@ class StubEmailProvider:
         self.outbox = outbox
         self.outbox.mkdir(parents=True, exist_ok=True)
 
-    async def send_report(self, to_address: str, result: ScanResult) -> None:
+    async def send_report(
+        self,
+        to_address: str,
+        result: ScanResult,
+        report: AiReport | None = None,
+    ) -> None:
         timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         filename = f"{timestamp}_{result.job_id}.txt"
         path = self.outbox / filename
-        body = _render_text(result, to_address)
+        body = _render_text(result, to_address, report)
         path.write_text(body, encoding="utf-8")
         log.info("Stub email written to %s", path)
 
@@ -48,11 +59,16 @@ class ResendEmailProvider:
         self.api_key = api_key.strip()
         self.from_address = from_address.strip()
 
-    async def send_report(self, to_address: str, result: ScanResult) -> None:
+    async def send_report(
+        self,
+        to_address: str,
+        result: ScanResult,
+        report: AiReport | None = None,
+    ) -> None:
         if not self.api_key:
             raise RuntimeError("RESEND_API_KEY is not configured.")
 
-        payload = _render_resend_payload(result, to_address, self.from_address)
+        payload = _render_resend_payload(result, to_address, self.from_address, report)
         await _post_resend_email(self.api_key, payload)
 
 
@@ -179,10 +195,11 @@ def _priority_actions(result: ScanResult) -> list[str]:
     return actions[:5]
 
 
-def _render_text(result: ScanResult, to_address: str) -> str:
-    narrative = _narrative_assessment(result)
-    risk_posture = _overall_risk_posture(result)
-    actions = _priority_actions(result)
+def _render_text(result: ScanResult, to_address: str, report: AiReport | None = None) -> str:
+    narrative = report.narrative_assessment if report else [_narrative_assessment(result)]
+    risk_posture = report.overall_risk_posture if report else _overall_risk_posture(result)
+    actions = report.priority_actions if report else _priority_actions(result)
+    finding_summaries = report.finding_summaries if report else _fallback_finding_summaries(result)
 
     lines = [
         f"To: {to_address}",
@@ -205,22 +222,39 @@ def _render_text(result: ScanResult, to_address: str) -> str:
         f"  low:      {result.summary.low}",
         f"  info:     {result.summary.info}",
         "",
-        "Narrative Assessment:",
-        f"  {narrative}",
+        "1. Narrative Assessment:",
+        *[f"  {paragraph}" for paragraph in narrative],
         "",
-        "Overall Risk Posture:",
+        "2. Overall Risk Posture:",
         f"  {risk_posture}",
         "",
-        "Priority Actions:",
+        "3. Priority Actions:",
     ]
     for index, action in enumerate(actions, start=1):
         lines.append(f"  {index}. {action}")
     lines += [
         "",
-        "Findings Summary Table (top 50):",
+        "4. Findings Summary Table:",
     ]
-    for f in result.findings[:50]:
-        lines.append(f"  [{f.severity.value:>8}] {f.name} — {f.matched_at}")
+    for row in finding_summaries:
+        lines.append(
+            f"  [{row.severity}] {row.category}: {row.finding} | "
+            f"Risk: {row.business_risk} | Action: {row.recommended_action}"
+        )
+    if not finding_summaries:
+        lines.append("  No findings")
+    closing_offer = report.closing_offer if report else _default_closing_offer()
+    lines += [
+        "",
+        "5. Closing Offer:",
+        f"  {closing_offer}",
+        "",
+        "This report was generated automatically. Analysis powered by OpenAI.",
+        "This scan may not detect all vulnerabilities. "
+        "A clean report does not guarantee complete security.",
+    ]
+    if settings.schedule_meeting_url:
+        lines += ["", f"Schedule a meeting: {settings.schedule_meeting_url}"]
     if result.error:
         lines += ["", f"Error: {result.error}"]
     if result.dashboard_url:
@@ -245,10 +279,11 @@ def _render_resend_payload(
     result: ScanResult,
     to_address: str,
     from_address: str,
+    report: AiReport | None = None,
 ) -> dict[str, object]:
     subject = f"SecureStep scan report for {result.domain} ({result.status.value})"
-    text_body = _render_text(result, to_address)
-    html_body = _render_html(result, to_address)
+    text_body = _render_text(result, to_address, report)
+    html_body = _render_html(result, to_address, report)
     payload: dict[str, object] = {
         "from": from_address,
         "to": [to_address],
@@ -259,64 +294,154 @@ def _render_resend_payload(
     return payload
 
 
-def _render_html(result: ScanResult, to_address: str) -> str:
-    narrative = _escape(_narrative_assessment(result))
-    risk_posture = _escape(_overall_risk_posture(result))
-    actions = _priority_actions(result)
+def _render_html(result: ScanResult, to_address: str, report: AiReport | None = None) -> str:
+    brand_color = "#1a237e"
+    narrative = report.narrative_assessment if report else [_narrative_assessment(result)]
+    risk_posture = report.overall_risk_posture if report else _overall_risk_posture(result)
+    actions = report.priority_actions if report else _priority_actions(result)
+    finding_summaries = report.finding_summaries if report else _fallback_finding_summaries(result)
     findings_rows = []
-    for f in result.findings[:50]:
+    for row in finding_summaries:
         findings_rows.append(
             "<tr>"
-            f"<td>{f.severity.value}</td>"
-            f"<td>{_escape(f.name)}</td>"
-            f"<td>{_escape(f.matched_at)}</td>"
-            f"<td>{_escape(f.template_id)}</td>"
+            f"<td>{_escape(row.category)}</td>"
+            f"<td>{_escape(row.finding)}</td>"
+            f"<td style='font-weight:700;color:{_severity_color(row.severity)};'>"
+            f"{_escape(row.severity)}</td>"
+            f"<td>{_escape(row.business_risk)}</td>"
+            f"<td>{_escape(row.recommended_action)}</td>"
             "</tr>"
         )
 
-    findings_html = "".join(findings_rows) or "<tr><td colspan='4'>No findings</td></tr>"
+    findings_html = "".join(findings_rows) or "<tr><td colspan='5'>No findings</td></tr>"
     dashboard = _escape(result.dashboard_url) if result.dashboard_url else "-"
     error = f"<p><strong>Error:</strong> {_escape(result.error)}</p>" if result.error else ""
+    completed = result.finished_at.strftime("%Y-%m-%d %H:%M:%S UTC") if result.finished_at else "-"
+    meeting_button = ""
+    if settings.schedule_meeting_url:
+        meeting_button = (
+            f"<p><a href='{_escape(settings.schedule_meeting_url)}' "
+            f"style='display:inline-block;background:{brand_color};color:#fff;"
+            "padding:10px 14px;text-decoration:none;border-radius:4px;"
+            "font-weight:700;'>Schedule a meeting</a></p>"
+        )
+    closing_offer = _escape(report.closing_offer if report else _default_closing_offer())
 
     return f"""
 <!doctype html>
 <html>
-  <body style="font-family: Arial, sans-serif; color: #222;">
-    <h2>SecureStep scan report</h2>
-    <p><strong>To:</strong> {_escape(to_address)}<br>
-       <strong>Domain:</strong> {_escape(result.domain)}<br>
-       <strong>Status:</strong> {_escape(result.status.value)}<br>
-       <strong>Dashboard:</strong> {dashboard}</p>
-    {error}
-    <h3>Summary</h3>
-    <ul>
-      <li>Total: {result.summary.total}</li>
-      <li>Critical: {result.summary.critical}</li>
-      <li>High: {result.summary.high}</li>
-      <li>Medium: {result.summary.medium}</li>
-      <li>Low: {result.summary.low}</li>
-      <li>Info: {result.summary.info}</li>
-    </ul>
-    <h3>Narrative Assessment</h3>
-    <p>{narrative}</p>
-    <h3>Overall Risk Posture</h3>
-    <p>{risk_posture}</p>
-    <h3>Priority Actions</h3>
-    <ol>
+  <body style="font-family: Arial, sans-serif; color: #111; margin:0; padding:0;">
+    <div style="max-width: 760px; margin:0 auto; padding: 18px 20px;">
+      <h1 style="background:{brand_color}; color:#fff; margin:0; padding:8px 10px; font-size:24px;">
+        Vulnerability Assessment Report
+      </h1>
+      <h2 style="background:{brand_color}; color:#fff; margin:8px 0 18px;
+                 padding:6px 10px; font-size:16px;">
+        Security scan results for {_escape(result.domain)}
+      </h2>
+      <table style="width:100%; border-collapse:collapse; margin-bottom:28px;">
+        <tr>
+          <td><strong>Scan ID:</strong> {_escape(result.job_id)}</td>
+          <td style="text-align:right;"><strong>Completed:</strong> {_escape(completed)}</td>
+        </tr>
+        <tr>
+          <td><strong>Severities:</strong> critical, high, medium, low, info</td>
+          <td style="text-align:right;"><strong>Findings:</strong> {result.summary.total}</td>
+        </tr>
+        <tr>
+          <td><strong>Status:</strong> {_escape(result.status.value)}</td>
+          <td style="text-align:right;"><strong>Dashboard:</strong> {dashboard}</td>
+        </tr>
+      </table>
+      {error}
+      <h3>1. Narrative Assessment</h3>
+      {"".join(f"<p>{_escape(paragraph)}</p>" for paragraph in narrative)}
+      <h3>2. Overall Risk Posture</h3>
+      <p>{_escape(risk_posture)}</p>
+      <h3>3. Priority Actions</h3>
+      <ol>
       {"".join(f"<li>{_escape(action)}</li>" for action in actions)}
-    </ol>
-    <h3>Findings Summary Table</h3>
-    <table cellpadding="6" cellspacing="0" border="1">
-      <thead>
-        <tr><th>Severity</th><th>Name</th><th>Matched</th><th>Template</th></tr>
-      </thead>
-      <tbody>
-        {findings_html}
-      </tbody>
-    </table>
+      </ol>
+      <h3>4. Findings Summary Table</h3>
+      <table cellpadding="8" cellspacing="0"
+             style="width:100%; border-collapse:collapse; border:1px solid #ddd;">
+        <thead>
+          <tr style="background:#f5f5f5;">
+            <th style="border:1px solid #ddd; text-align:left;">Category</th>
+            <th style="border:1px solid #ddd; text-align:left;">Finding</th>
+            <th style="border:1px solid #ddd; text-align:left;">Severity</th>
+            <th style="border:1px solid #ddd; text-align:left;">Business Risk</th>
+            <th style="border:1px solid #ddd; text-align:left;">Recommended Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          {findings_html}
+        </tbody>
+      </table>
+      <h3>5. Closing Offer</h3>
+      <p>{closing_offer}</p>
+      <p>
+        If helpful, we can provide a board-ready one-page summary, a remediation roadmap,
+        or a technical remediation checklist for your IT or engineering team.
+      </p>
+      {meeting_button}
+      <p style="color:#777; font-size:13px;">
+        This report was generated automatically. Analysis powered by OpenAI.
+      </p>
+      <p style="color:#777; font-size:13px;">
+        Warning: This scan may not detect all vulnerabilities. A clean report does not
+        guarantee complete security.
+      </p>
+    </div>
   </body>
 </html>
 """.strip()
+
+
+def _fallback_finding_summaries(result: ScanResult) -> list[FindingSummary]:
+    return [
+        FindingSummary(
+            category=_category_for_finding(f.name, f.template_id),
+            finding=f.name,
+            severity=f.severity.value.title(),
+            business_risk=f.description or "This finding may indicate a security hardening gap.",
+            recommended_action=(
+                "Review the affected endpoint and apply the recommended remediation."
+            ),
+        )
+        for f in result.findings[:50]
+    ]
+
+
+def _category_for_finding(name: str, template_id: str) -> str:
+    text = f"{name} {template_id}".lower()
+    if "tls" in text or "ssl" in text or "certificate" in text:
+        return "Cryptographic"
+    if "dns" in text or "cname" in text or "caa" in text:
+        return "DNS Security"
+    if "cookie" in text or "header" in text or "xss" in text or "clickjacking" in text:
+        return "Web Security"
+    if "waf" in text or "technology" in text:
+        return "Infrastructure Security"
+    return "Security Finding"
+
+
+def _severity_color(severity: str) -> str:
+    normalized = severity.lower()
+    if normalized in {"critical", "high"}:
+        return "#b71c1c"
+    if normalized == "medium":
+        return "#e65100"
+    if normalized == "low":
+        return "#0d47a1"
+    return "#455a64"
+
+
+def _default_closing_offer() -> str:
+    return (
+        "If helpful, we can provide additional materials to make these results easier "
+        "to share internally or to support remediation planning."
+    )
 
 
 def _escape(value: str) -> str:

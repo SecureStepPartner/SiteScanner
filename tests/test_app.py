@@ -8,6 +8,7 @@ from app.config import Settings
 from app.email import StubEmailProvider
 from app.main import app, health
 from app.models import Finding, ScanResult, ScanStatus, ScanSummary, ScanType, Severity
+from app.reporting import AiReport, FindingSummary
 
 
 def test_health_endpoint_returns_ok() -> None:
@@ -64,3 +65,38 @@ def test_stub_email_provider_writes_report(tmp_path) -> None:
     assert "Priority Actions" in body
     assert "Findings Summary Table" in body
     assert "security headers" in body.lower()
+
+
+def test_stub_email_provider_uses_ai_report_when_available(tmp_path) -> None:
+    result = ScanResult(
+        job_id="job-456",
+        domain="example.com",
+        scan_type=ScanType.standard,
+        status=ScanStatus.completed,
+        created_at=datetime(2026, 5, 20, 0, 0, tzinfo=timezone.utc),
+        finished_at=datetime(2026, 5, 20, 0, 10, tzinfo=timezone.utc),
+        summary=ScanSummary(total=1, low=1),
+    )
+    report = AiReport(
+        narrative_assessment=["Human readable client summary from OpenAI."],
+        overall_risk_posture="Overall risk posture: Low.",
+        priority_actions=["Implement recommended hardening controls."],
+        finding_summaries=[
+            FindingSummary(
+                category="Web Security",
+                finding="Missing HTTP security headers",
+                severity="Low",
+                business_risk="Reduced browser-side protection.",
+                recommended_action="Add a hardened HTTP header baseline.",
+            )
+        ],
+        closing_offer="We can walk through the findings in a review session.",
+    )
+
+    provider = StubEmailProvider(outbox=tmp_path)
+    asyncio.run(provider.send_report("user@example.com", result, report))
+
+    body = next(tmp_path.iterdir()).read_text(encoding="utf-8")
+    assert "Human readable client summary from OpenAI." in body
+    assert "Overall risk posture: Low." in body
+    assert "We can walk through the findings" in body
