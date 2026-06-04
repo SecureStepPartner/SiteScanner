@@ -57,7 +57,8 @@ def test_stub_email_provider_writes_report(tmp_path) -> None:
     written_files = list(tmp_path.iterdir())
     assert len(written_files) == 1
     body = written_files[0].read_text(encoding="utf-8")
-    assert "SecureStep scan report" in body
+    assert "Scan Report: example.com" in body
+    assert "Vulnerability Assessment Report" in body
     assert "user@example.com" in body
     assert "example.com" in body
     assert "Narrative Assessment" in body

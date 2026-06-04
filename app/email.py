@@ -204,23 +204,15 @@ def _render_text(result: ScanResult, to_address: str, report: AiReport | None = 
     lines = [
         f"To: {to_address}",
         f"From: {settings.email_from}",
-        f"Subject: SecureStep scan report for {result.domain} ({result.status.value})",
+        f"Subject: {_email_subject(result)}",
+        "",
+        "Vulnerability Assessment Report",
+        f"Security scan results for {result.domain}",
         "",
         f"Scan ID:       {result.job_id}",
-        f"Domain:        {result.domain}",
-        f"Scan type:     {result.scan_type.value}",
-        f"Status:        {result.status.value}",
-        f"Started:       {result.created_at.isoformat()}",
-        f"Finished:      {result.finished_at.isoformat() if result.finished_at else '-'}",
-        f"Dashboard:     {result.dashboard_url or '-'}",
-        "",
-        "Summary:",
-        f"  total:    {result.summary.total}",
-        f"  critical: {result.summary.critical}",
-        f"  high:     {result.summary.high}",
-        f"  medium:   {result.summary.medium}",
-        f"  low:      {result.summary.low}",
-        f"  info:     {result.summary.info}",
+        f"Completed:     {_completed_at(result)}",
+        "Severities:    critical, high, medium, low, info",
+        f"Findings:      {result.summary.total}",
         "",
         "1. Narrative Assessment:",
         *[f"  {paragraph}" for paragraph in narrative],
@@ -248,6 +240,11 @@ def _render_text(result: ScanResult, to_address: str, report: AiReport | None = 
         "",
         "5. Closing Offer:",
         f"  {closing_offer}",
+        "  If helpful, we can provide additional materials to make these results easier "
+        "to share internally or to support remediation planning:",
+        "  * A board-ready one-page summary of the findings and business impact",
+        "  * A remediation roadmap with recommended priorities and timelines",
+        "  * A technical remediation checklist for your IT or engineering team",
         "",
         "This report was generated automatically. Analysis powered by OpenAI.",
         "This scan may not detect all vulnerabilities. "
@@ -281,7 +278,7 @@ def _render_resend_payload(
     from_address: str,
     report: AiReport | None = None,
 ) -> dict[str, object]:
-    subject = f"SecureStep scan report for {result.domain} ({result.status.value})"
+    subject = _email_subject(result)
     text_body = _render_text(result, to_address, report)
     html_body = _render_html(result, to_address, report)
     payload: dict[str, object] = {
@@ -314,9 +311,8 @@ def _render_html(result: ScanResult, to_address: str, report: AiReport | None = 
         )
 
     findings_html = "".join(findings_rows) or "<tr><td colspan='5'>No findings</td></tr>"
-    dashboard = _escape(result.dashboard_url) if result.dashboard_url else "-"
     error = f"<p><strong>Error:</strong> {_escape(result.error)}</p>" if result.error else ""
-    completed = result.finished_at.strftime("%Y-%m-%d %H:%M:%S UTC") if result.finished_at else "-"
+    completed = _completed_at(result)
     meeting_button = ""
     if settings.schedule_meeting_url:
         meeting_button = (
@@ -332,14 +328,15 @@ def _render_html(result: ScanResult, to_address: str, report: AiReport | None = 
 <html>
   <body style="font-family: Arial, sans-serif; color: #111; margin:0; padding:0;">
     <div style="max-width: 760px; margin:0 auto; padding: 18px 20px;">
-      <h1 style="background:{brand_color}; color:#fff; margin:0; padding:8px 10px; font-size:24px;">
-        Vulnerability Assessment Report
+      <h1 style="background:{brand_color}; color:#fff; margin:0; padding:7px 10px;
+                 font-size:23px; line-height:1.2;">
+        🛡️ Vulnerability Assessment Report
       </h1>
       <h2 style="background:{brand_color}; color:#fff; margin:8px 0 18px;
-                 padding:6px 10px; font-size:16px;">
+                 padding:6px 10px; font-size:16px; line-height:1.2;">
         Security scan results for {_escape(result.domain)}
       </h2>
-      <table style="width:100%; border-collapse:collapse; margin-bottom:28px;">
+      <table style="width:100%; border-collapse:collapse; margin-bottom:285px; font-size:14px;">
         <tr>
           <td><strong>Scan ID:</strong> {_escape(result.job_id)}</td>
           <td style="text-align:right;"><strong>Completed:</strong> {_escape(completed)}</td>
@@ -347,10 +344,6 @@ def _render_html(result: ScanResult, to_address: str, report: AiReport | None = 
         <tr>
           <td><strong>Severities:</strong> critical, high, medium, low, info</td>
           <td style="text-align:right;"><strong>Findings:</strong> {result.summary.total}</td>
-        </tr>
-        <tr>
-          <td><strong>Status:</strong> {_escape(result.status.value)}</td>
-          <td style="text-align:right;"><strong>Dashboard:</strong> {dashboard}</td>
         </tr>
       </table>
       {error}
@@ -381,9 +374,14 @@ def _render_html(result: ScanResult, to_address: str, report: AiReport | None = 
       <h3>5. Closing Offer</h3>
       <p>{closing_offer}</p>
       <p>
-        If helpful, we can provide a board-ready one-page summary, a remediation roadmap,
-        or a technical remediation checklist for your IT or engineering team.
+        If helpful, we can provide additional materials to make these results easier to share
+        internally or to support remediation planning:
       </p>
+      <ul>
+        <li>A board-ready one-page summary of the findings and business impact</li>
+        <li>A remediation roadmap with recommended priorities and timelines</li>
+        <li>A technical remediation checklist for your IT or engineering team</li>
+      </ul>
       {meeting_button}
       <p style="color:#777; font-size:13px;">
         This report was generated automatically. Analysis powered by OpenAI.
@@ -396,6 +394,15 @@ def _render_html(result: ScanResult, to_address: str, report: AiReport | None = 
   </body>
 </html>
 """.strip()
+
+
+def _email_subject(result: ScanResult) -> str:
+    noun = "finding" if result.summary.total == 1 else "findings"
+    return f"Scan Report: {result.domain} — {result.summary.total} {noun} ({result.status.value})"
+
+
+def _completed_at(result: ScanResult) -> str:
+    return result.finished_at.strftime("%Y-%m-%d %H:%M:%S UTC") if result.finished_at else "-"
 
 
 def _fallback_finding_summaries(result: ScanResult) -> list[FindingSummary]:
