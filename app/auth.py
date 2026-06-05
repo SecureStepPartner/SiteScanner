@@ -5,19 +5,18 @@ from __future__ import annotations
 import secrets
 from typing import Annotated
 
-from fastapi import HTTPException, Request, Security, status
-from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
+from fastapi import Header, HTTPException, Request, Security, status
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from app.config import settings
 
-api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 bearer_auth = HTTPBearer(auto_error=False)
 
 
 async def require_api_key(
     request: Request,
     bearer: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],
-    x_api_key: Annotated[str | None, Security(api_key_header)],
+    x_api_key: Annotated[str | None, Header(default=None, include_in_schema=False)],
 ) -> str:
     """Require a configured API key for protected endpoints.
 
