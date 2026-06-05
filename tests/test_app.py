@@ -4,11 +4,13 @@ from datetime import datetime, timezone
 import pytest
 from pydantic import ValidationError
 
+from app.auth import _extract_key
 from app.config import Settings
 from app.email import StubEmailProvider
 from app.main import app, health
 from app.models import Finding, ScanResult, ScanStatus, ScanSummary, ScanType, Severity
 from app.reporting import AiReport, FindingSummary
+from app.validators import DomainValidationError, normalize_domain
 
 
 def test_health_endpoint_returns_ok() -> None:
@@ -30,6 +32,18 @@ def test_scan_timeout_is_capped_at_15_minutes() -> None:
 
     settings = Settings(scan_timeout_seconds=900)
     assert settings.scan_timeout_seconds == 900
+
+
+def test_domain_validation_blocks_internal_targets() -> None:
+    assert normalize_domain(" HTTPS://Example.com/path ") == "example.com"
+
+    for value in ["127.0.0.1", "localhost", "service.local", "10.0.0.1"]:
+        with pytest.raises(DomainValidationError):
+            normalize_domain(value)
+
+
+def test_auth_extracts_supported_api_key_headers() -> None:
+    assert _extract_key(bearer=None, x_api_key="abc123") == "abc123"
 
 
 def test_stub_email_provider_writes_report(tmp_path) -> None:

@@ -9,6 +9,8 @@ and returns structured results along with an email report.
 - Python 3.10+ with FastAPI and uvicorn
 - Redis with `arq` for the async job queue and worker
 - Nuclei (ProjectDiscovery) executed as a supervised subprocess
+- Optional OpenAI report generation before email delivery
+- Resend email delivery
 
 ## Prerequisites
 
@@ -121,6 +123,33 @@ curl http://localhost:8000/health
 OpenAPI schema (consumed by the ChatGPT App Builder Action) is published at
 `http://localhost:8000/openapi.json` and interactive docs at `/docs`.
 
+## Security hardening
+
+Production deployments should set:
+
+```env
+SITESCANNER_API_KEY=replace_with_strong_random_value
+REQUIRE_API_KEY=true
+TRUSTED_HOSTS=scanner.example.com
+RATE_LIMIT_PER_MINUTE=5
+RATE_LIMIT_PER_HOUR=30
+MAX_PENDING_SCANS=25
+```
+
+The API accepts the key as either:
+
+```http
+Authorization: Bearer <key>
+```
+
+or:
+
+```http
+X-API-Key: <key>
+```
+
+See `docs/SECURITY_NOTES.md` and `docs/API_USAGE.md`.
+
 ## MVP Status
 
 The backend is wired end-to-end:
@@ -129,6 +158,8 @@ The backend is wired end-to-end:
 - enforced 15-minute scan timeout
 - OpenAPI schema for ChatGPT Actions
 - email report delivery through Resend, with a stub fallback for local use
+- OpenAI-generated narrative report support with fallback reporting
+- API-key auth, rate limiting, pending-scan limits, and hardened validation
 - workflow testing via GitHub Actions
 
 ## Repository layout
@@ -144,7 +175,9 @@ app/
   scanner.py     Nuclei subprocess execution and timeout
   parser.py      Nuclei JSONL → structured findings
   email.py       Report delivery (Resend + stub fallback)
-  auth.py        No-op auth dependency placeholder
+  auth.py        API-key authentication dependency
+  rate_limit.py  Redis-backed rate limiting and pending scan controls
   validators.py  Domain validation
 client_scan.sh   Reference operator script (not used by the service)
+docs/            Deployment, security, operations, QA, and handoff docs
 ```

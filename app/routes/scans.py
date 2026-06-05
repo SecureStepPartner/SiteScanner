@@ -7,8 +7,9 @@ from datetime import datetime
 
 from arq import create_pool
 from arq.connections import ArqRedis, RedisSettings
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Response, status
 
+from app.auth import require_api_key
 from app.config import settings
 from app.models import (
     ScanCreated,
@@ -18,10 +19,11 @@ from app.models import (
     ScanSummary,
     ScanType,
 )
+from app.rate_limit import RateLimitExceeded, enforce_pending_scan_limit, enforce_scan_rate_limit
 from app.store import create_job, get_job, parse_result_field
 from app.validators import DomainValidationError, normalize_domain
 
-router = APIRouter(tags=["scans"])
+router = APIRouter(tags=["scans"], dependencies=[Depends(require_api_key)])
 
 _arq_pool: ArqRedis | None = None
 
@@ -62,7 +64,11 @@ def _result_from_record(record: dict[str, str]) -> ScanResult:
     operation_id="create_scan_scan_post",
     summary="Initiate a vulnerability scan",
 )
-async def create_scan(payload: ScanRequest) -> ScanCreated:
+async def create_scan(
+    payload: ScanRequest,
+    response: Response,
+    caller_identity: str = Depends(require_api_key),
+) -> ScanCreated:
     """Enqueue a scan and return a job_id for polling."""
     try:
         domain = normalize_domain(payload.domain)
@@ -71,6 +77,13 @@ async def create_scan(payload: ScanRequest) -> ScanCreated:
 
     job_id = uuid.uuid4().hex
     pool = await _get_pool()
+
+    try:
+        await enforce_scan_rate_limit(pool, caller_identity)
+        await enforce_pending_scan_limit(pool)
+    except RateLimitExceeded as exc:
+        response.headers["Retry-After"] = str(exc.retry_after)
+        raise HTTPException(status_code=429, detail=str(exc)) from exc
 
     await create_job(
         pool,
@@ -88,8 +101,12 @@ async def create_scan(payload: ScanRequest) -> ScanCreated:
     "/scans",
     include_in_schema=False,
 )
-async def create_scan_alias(payload: ScanRequest) -> ScanCreated:
-    return await create_scan(payload)
+async def create_scan_alias(
+    payload: ScanRequest,
+    response: Response,
+    caller_identity: str = Depends(require_api_key),
+) -> ScanCreated:
+    return await create_scan(payload, response, caller_identity)
 
 
 @router.get(
@@ -100,6 +117,9 @@ async def create_scan_alias(payload: ScanRequest) -> ScanCreated:
 )
 async def get_scan(scan_id: str) -> ScanResult:
     """Return the current state of a scan, including findings when terminal."""
+    if not _is_valid_job_id(scan_id):
+        raise HTTPException(status_code=400, detail="Invalid scan_id.")
+
     pool = await _get_pool()
     record = await get_job(pool, scan_id)
     if record is None:
@@ -135,3 +155,7 @@ async def list_scans() -> list[ScanResult]:
 
     results.sort(key=lambda item: item.created_at, reverse=True)
     return results
+
+
+def _is_valid_job_id(scan_id: str) -> bool:
+    return len(scan_id) == 32 and all(char in "0123456789abcdef" for char in scan_id.lower())

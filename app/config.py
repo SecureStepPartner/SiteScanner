@@ -17,8 +17,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # Reserved for future authentication hardening.
+    # API authentication. Production deployments should set this and configure
+    # ChatGPT Actions to send it as either `Authorization: Bearer ...` or
+    # `X-API-Key`.
     sitescanner_api_key: str = Field(default="")
+    require_api_key: bool = Field(default=False)
+    trusted_hosts: str = Field(default="*")
 
     # ProjectDiscovery Cloud API key. If set, the scanner adds the `-dashboard`
     # flag and Nuclei uploads results to cloud.projectdiscovery.io.
@@ -43,6 +47,9 @@ class Settings(BaseSettings):
     # Scan controls. 15 mins timeout
     scan_timeout_seconds: int = Field(default=900, ge=1, le=900)
     max_concurrent_scans: int = Field(default=3, ge=1)
+    rate_limit_per_minute: int = Field(default=5, ge=1)
+    rate_limit_per_hour: int = Field(default=30, ge=1)
+    max_pending_scans: int = Field(default=25, ge=1)
 
     # Server.
     host: str = Field(default="0.0.0.0")

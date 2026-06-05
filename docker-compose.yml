@@ -1,4 +1,8 @@
 services:
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+
   web:
     build:
       context: .
@@ -7,6 +11,8 @@ services:
       - .env
     ports:
       - "8000:8000"
+    depends_on:
+      - redis
     restart: unless-stopped
 
   worker:
@@ -15,4 +21,6 @@ services:
     command: arq app.worker.WorkerSettings
     env_file:
       - .env
+    depends_on:
+      - redis
     restart: unless-stopped
