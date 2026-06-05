@@ -16,7 +16,7 @@ bearer_auth = HTTPBearer(auto_error=False)
 async def require_api_key(
     request: Request,
     bearer: Annotated[HTTPAuthorizationCredentials | None, Security(bearer_auth)],
-    x_api_key: Annotated[str | None, Header(default=None, include_in_schema=False)],
+    x_api_key: Annotated[str | None, Header(include_in_schema=False)] = None,
 ) -> str:
     """Require a configured API key for protected endpoints.
 
