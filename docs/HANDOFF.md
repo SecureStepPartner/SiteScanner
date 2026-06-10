@@ -22,9 +22,6 @@
 - Stable public URL or named Cloudflare Tunnel domain.
 - `SITESCANNER_API_KEY`.
 - OpenAI API key with active billing/quota.
-- Resend API key and verified sender.
-- ProjectDiscovery API key and team ID if dashboard upload is required.
-- Meeting URL for email call-to-action.
 
 ## Recommended Final Production URL
 
@@ -35,4 +32,3 @@ https://scanner.securestep.io
 ```
 
 Avoid temporary `trycloudflare.com` URLs outside testing.
-
