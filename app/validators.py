@@ -6,7 +6,8 @@ link-local, loopback, and cloud-metadata addresses, plus public-suffix parsing.
 """
 
 import re
-from ipaddress import ip_address
+import socket
+from ipaddress import ip_address, ip_network
 
 _DOMAIN_RE = re.compile(
     r"^[A-Za-z0-9]([A-Za-z0-9\-]{0,61}[A-Za-z0-9])?"
@@ -14,6 +15,12 @@ _DOMAIN_RE = re.compile(
 )
 _BLOCKED_EXACT_NAMES = {"localhost"}
 _BLOCKED_SUFFIXES = (".localhost", ".local", ".internal", ".lan")
+_METADATA_NETWORKS = (
+    ip_network("169.254.169.254/32"),
+    ip_network("169.254.0.0/16"),
+    ip_network("fe80::/10"),
+    ip_network("fc00::/7"),
+)
 
 
 class DomainValidationError(ValueError):
@@ -62,6 +69,45 @@ def normalize_domain(raw: str) -> str:
         raise DomainValidationError("Domain must use a public alphabetic top-level domain.")
 
     return candidate
+
+
+def validate_public_dns_resolution(domain: str) -> list[str]:
+    """Resolve a domain and reject unsafe A/AAAA targets.
+
+    A syntactically public hostname can still resolve to internal or metadata
+    address space. This check is intentionally fail-closed: unresolved domains
+    are not scanned, and any unsafe DNS answer blocks the request.
+    """
+    try:
+        answers = socket.getaddrinfo(domain, None, type=socket.SOCK_STREAM)
+    except socket.gaierror as exc:
+        raise DomainValidationError(f"Domain could not be resolved: {domain}") from exc
+
+    resolved_ips = sorted({answer[4][0] for answer in answers})
+    if not resolved_ips:
+        raise DomainValidationError(f"Domain could not be resolved: {domain}")
+
+    for resolved in resolved_ips:
+        address = ip_address(resolved)
+        if _is_unsafe_resolved_ip(address):
+            raise DomainValidationError(
+                f"Domain resolves to an unsafe internal or reserved address: {resolved}"
+            )
+
+    return resolved_ips
+
+
+def _is_unsafe_resolved_ip(address) -> bool:
+    if (
+        address.is_private
+        or address.is_loopback
+        or address.is_link_local
+        or address.is_reserved
+        or address.is_multicast
+        or address.is_unspecified
+    ):
+        return True
+    return any(address in network for network in _METADATA_NETWORKS)
 
 
 def to_target_url(domain: str) -> str:

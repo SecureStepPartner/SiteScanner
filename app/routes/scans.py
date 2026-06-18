@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import uuid
 from datetime import datetime
 
@@ -21,7 +22,7 @@ from app.models import (
 )
 from app.rate_limit import RateLimitExceeded, enforce_pending_scan_limit, enforce_scan_rate_limit
 from app.store import create_job, get_job, parse_result_field
-from app.validators import DomainValidationError, normalize_domain
+from app.validators import DomainValidationError, normalize_domain, validate_public_dns_resolution
 
 router = APIRouter(tags=["scans"], dependencies=[Depends(require_api_key)])
 
@@ -72,6 +73,7 @@ async def create_scan(
     """Enqueue a scan and return a job_id for polling."""
     try:
         domain = normalize_domain(payload.domain)
+        await asyncio.to_thread(validate_public_dns_resolution, domain)
     except DomainValidationError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
