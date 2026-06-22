@@ -1,4 +1,5 @@
 import asyncio
+import socket
 from datetime import datetime, timezone
 
 import pytest
@@ -10,7 +11,7 @@ from app.email import StubEmailProvider
 from app.main import app, health
 from app.models import Finding, ScanResult, ScanStatus, ScanSummary, ScanType, Severity
 from app.reporting import AiReport, FindingSummary
-from app.validators import DomainValidationError, normalize_domain
+from app.validators import DomainValidationError, normalize_domain, validate_public_dns_resolution
 
 
 def test_health_endpoint_returns_ok() -> None:
@@ -40,6 +41,51 @@ def test_domain_validation_blocks_internal_targets() -> None:
     for value in ["127.0.0.1", "localhost", "service.local", "10.0.0.1"]:
         with pytest.raises(DomainValidationError):
             normalize_domain(value)
+
+
+def test_dns_validation_allows_public_resolution(monkeypatch) -> None:
+    def fake_getaddrinfo(*args, **kwargs):
+        return [
+            (socket.AF_INET, socket.SOCK_STREAM, 6, "", ("93.184.216.34", 0)),
+            (socket.AF_INET6, socket.SOCK_STREAM, 6, "", ("2606:2800:220:1:248:1893:25c8:1946", 0)),
+        ]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    assert validate_public_dns_resolution("example.com") == [
+        "2606:2800:220:1:248:1893:25c8:1946",
+        "93.184.216.34",
+    ]
+
+
+def test_dns_validation_blocks_unsafe_resolution(monkeypatch) -> None:
+    def fake_getaddrinfo(*args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("10.0.0.5", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    with pytest.raises(DomainValidationError, match="unsafe"):
+        validate_public_dns_resolution("example.com")
+
+
+def test_dns_validation_blocks_metadata_resolution(monkeypatch) -> None:
+    def fake_getaddrinfo(*args, **kwargs):
+        return [(socket.AF_INET, socket.SOCK_STREAM, 6, "", ("169.254.169.254", 0))]
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    with pytest.raises(DomainValidationError, match="unsafe"):
+        validate_public_dns_resolution("example.com")
+
+
+def test_dns_validation_fails_closed_on_resolution_error(monkeypatch) -> None:
+    def fake_getaddrinfo(*args, **kwargs):
+        raise socket.gaierror("not found")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+
+    with pytest.raises(DomainValidationError, match="could not be resolved"):
+        validate_public_dns_resolution("missing.example")
 
 
 def test_auth_extracts_supported_api_key_headers() -> None:

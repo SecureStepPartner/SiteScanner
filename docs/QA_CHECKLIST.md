@@ -14,6 +14,10 @@ pytest
 - `/scan` rejects requests without API key when `REQUIRE_API_KEY=true`.
 - `/scan` accepts valid API key.
 - `/scan` rejects IP addresses, localhost, and invalid domains.
+- `/scan` rejects valid-looking domains whose A/AAAA records resolve to private,
+  loopback, link-local, reserved, multicast, unspecified, or metadata/internal
+  address space.
+- `/scan` rejects domains that cannot be resolved.
 - Rate limit returns HTTP 429 after configured threshold.
 - `/scan/{job_id}` returns queued/running/completed state.
 
@@ -31,4 +35,3 @@ pytest
 - OpenAI report generation works when quota is available.
 - Fallback report sends if OpenAI is unavailable.
 - Email uses the approved report structure and `#1a237e` branding.
-

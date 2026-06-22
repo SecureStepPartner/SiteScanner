@@ -8,6 +8,10 @@ infrastructure.
 - API key authentication using bearer token or `X-API-Key`.
 - Optional fail-closed auth with `REQUIRE_API_KEY=true`.
 - Domain normalization with IP literals, localhost, and internal hostnames blocked.
+- DNS-resolution validation before scan creation. A/AAAA records are resolved
+  and the request is rejected if any answer points to private, loopback,
+  link-local, reserved, multicast, unspecified, unique-local, or metadata
+  address space.
 - Nuclei executed without a shell; arguments are passed as argv items.
 - Process group termination on timeout, with SIGTERM then SIGKILL.
 - 15-minute maximum scan timeout enforced in settings.
@@ -29,6 +33,29 @@ REDIS_URL=redis://redis:6379/0
 
 Do not rely on browser-based Cloudflare Access for ChatGPT Actions. ChatGPT
 cannot complete an interactive browser login. Use API-key auth at the API layer.
+
+## DNS Resolution Guardrail
+
+The API performs two layers of target validation before a scan is queued:
+
+1. Syntax and hostname validation blocks obvious unsafe inputs such as raw IP
+   addresses, `localhost`, hostnames with credentials or ports, and common
+   internal suffixes such as `.local`, `.internal`, and `.lan`.
+2. DNS validation resolves the submitted hostname and rejects the request if any
+   A or AAAA record points to unsafe address space.
+
+Unsafe address space includes:
+
+- private RFC1918/unique-local ranges
+- loopback
+- link-local
+- reserved
+- multicast
+- unspecified
+- cloud metadata/internal ranges such as `169.254.169.254`
+
+DNS failures are fail-closed: unresolved domains are rejected rather than
+scanned.
 
 ## Abuse Prevention
 
@@ -52,4 +79,3 @@ Adjust downward for public demos or unknown users.
 - Monitor `web` and `worker` logs.
 - Store secrets only in deployment environment or `.env` on the server, never in Git.
 - Use a dedicated OpenAI API key and Resend key for this app.
-

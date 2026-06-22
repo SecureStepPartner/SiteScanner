@@ -12,6 +12,8 @@
 - API key authentication.
 - Rate limiting and pending-scan abuse controls.
 - Hardened domain validation.
+- DNS-resolution-based protection against domains resolving to internal,
+  reserved, metadata, or otherwise unsafe IP ranges.
 - Request logging and operational diagnostics.
 - OpenAPI schema for ChatGPT Actions.
 - Docker deployment path.
