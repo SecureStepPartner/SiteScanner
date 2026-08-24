@@ -1,0 +1,6 @@
+# Require SecureStepPartner review for security-sensitive operational surfaces.
+/bruno/ @rnishku-dev
+/app/auth.py @rnishku-dev
+/app/routes/ @rnishku-dev
+/.github/workflows/ @rnishku-dev
+/.env.example @rnishku-dev

@@ -1,0 +1,33 @@
+info:
+  name: Health
+  type: http
+  seq: 1
+  tags:
+    - read-only
+    - safe
+
+http:
+  method: GET
+  url: "{{sitescanner_base_url}}/health"
+  headers:
+    - name: Accept
+      value: application/json
+  auth: none
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: 200
+    - expression: res.body.status
+      operator: eq
+      value: ok
+
+settings:
+  encodeUrl: true
+  timeout: 10000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: Liveness-only check. It does not create a scan, query results, send email, or access client data.

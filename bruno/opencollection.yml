@@ -1,0 +1,13 @@
+opencollection: 1.0.0
+
+info:
+  name: SecureStep SiteScanner - Safe Checks
+bundled: false
+extensions:
+  bruno:
+    ignore:
+      - node_modules
+      - .git
+      - environments/Local.yml
+      - responses
+      - exports

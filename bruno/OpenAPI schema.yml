@@ -1,0 +1,33 @@
+info:
+  name: OpenAPI schema
+  type: http
+  seq: 2
+  tags:
+    - read-only
+    - safe
+
+http:
+  method: GET
+  url: "{{sitescanner_base_url}}/openapi.json"
+  headers:
+    - name: Accept
+      value: application/json
+  auth: none
+
+runtime:
+  assertions:
+    - expression: res.status
+      operator: eq
+      value: 200
+    - expression: res.body.info.title
+      operator: eq
+      value: SecureStep Site Scanner
+
+settings:
+  encodeUrl: true
+  timeout: 10000
+  followRedirects: false
+  maxRedirects: 0
+  forwardAuthorizationHeader: false
+
+docs: Retrieves the public API contract only. Scan creation and scan-result requests are intentionally excluded from the public Bruno collection.
