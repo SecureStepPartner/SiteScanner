@@ -1,0 +1,10 @@
+environments/Local.yml
+.env*
+responses/
+exports/
+*.har
+*.pem
+*.key
+*.p12
+*.pfx
+.DS_Store

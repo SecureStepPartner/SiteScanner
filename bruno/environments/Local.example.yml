@@ -1,0 +1,7 @@
+name: Local example
+variables:
+  - name: sitescanner_base_url
+    value: http://127.0.0.1:8000
+    enabled: true
+    secret: false
+    type: text
